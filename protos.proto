@@ -4,6 +4,18 @@ message GetUserRequest {
   int64 user_id = 1;
 }
 
+message GetNewMessagesRequest {
+}
+
+message NewMessageEvent {
+  Message message = 1;
+}
+
+message Message {
+  optional string text = 1;
+}
+
+
 message User {
   string first_name = 1;
   optional string last_name = 2;
@@ -12,4 +24,5 @@ message User {
 
 service TelegramClient {
   rpc GetUser(GetUserRequest) returns (User);
+  rpc GetNewMessages(GetNewMessagesRequest) returns (stream NewMessageEvent);
 }

@@ -1,17 +1,26 @@
 import traceback
 
 import grpc
-from telethon import TelegramClient, functions
+from telethon import TelegramClient, functions, events, types
 import os
 import asyncio
 
 import protos_pb2_grpc
-from protos_pb2 import User, GetUserRequest
+from protos_pb2 import User, GetUserRequest, NewMessageEvent, Message
 
 api_id = int(os.environ['API_ID'])
 api_hash = os.environ['API_HASH']
 client = TelegramClient("session", api_id, api_hash)
 client.start()
+
+messages = []
+
+@client.on(events.NewMessage())
+async def handle_new_message(event):
+    if isinstance(event.message, types.Message):
+        message_event = NewMessageEvent(message=Message(text=event.message.raw_text))
+        messages.append(message_event)
+        print(message_event)
 
 class TelegramServer(protos_pb2_grpc.TelegramClientServicer):
     async def GetUser(self, request: GetUserRequest, context: grpc.aio.ServicerContext) -> User:
@@ -24,9 +33,18 @@ class TelegramServer(protos_pb2_grpc.TelegramClientServicer):
             result = result.users[0]
             return User(first_name=result.first_name, last_name=result.last_name, username=result.username)
         except:
-            print("exception")
             traceback.print_exc()
 
+    async def GetNewMessages(self, request, context) -> NewMessageEvent:
+        try:
+            print("get new messages")
+            while True:
+                while not messages:
+                    await asyncio.sleep(0.1)
+
+                yield messages.pop()
+        except:
+            traceback.print_exc()
 
 
 async def serve() -> None:
