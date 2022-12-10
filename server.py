@@ -1,16 +1,8 @@
-# This is a sample Python script.
+from telethon import TelegramClient
+import os
 
-# Press ⌃R to execute it or replace it with your code.
-# Press Double ⇧ to search everywhere for classes, files, tool windows, actions, and settings.
-
-
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press ⌘F8 to toggle the breakpoint.
-
-
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+api_id = int(os.environ['API_ID'])
+api_hash = os.environ['API_HASH']
+client = TelegramClient("session", api_id, api_hash)
+client.start()
+client.run_until_disconnected()
