@@ -24,6 +24,6 @@ docker build -t telegram_grpc .
 
 ## Run and save the session
 ```
-touch session
+touch session.session
 docker run -e API_ID=... -e API_HASH=... -v `pwd`/session.session:/telegram/session.session -p 50051:50051 -it --rm telegram_grpc
 ```
