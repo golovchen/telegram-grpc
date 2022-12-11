@@ -58,7 +58,23 @@ message FullUser {
   optional string username = 3;
 }
 
+message ForwardRequest {
+  int64 message_id = 1;
+  oneof from {
+    int64 from_user_id = 2;
+    int64 from_chat_id = 3;
+    int64 from_channel_id = 4;
+  }
+  oneof to {
+    int64 to_user_id = 5;
+    int64 to_chat_id = 6;
+  }
+}
+
+message ForwardResponse { }
+
 service TelegramClient {
   rpc GetUser(GetUserRequest) returns (FullUser);
   rpc GetNewMessages(GetNewMessagesRequest) returns (stream NewMessageEvent);
+  rpc Forward(ForwardRequest) returns (ForwardResponse);
 }

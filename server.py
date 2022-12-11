@@ -4,10 +4,11 @@ import traceback
 
 import grpc
 from telethon import TelegramClient, functions, events, types
-from telethon.tl.types import PeerUser
+from telethon.tl.types import PeerUser, PeerChat, PeerChannel
 
 import protos_pb2_grpc
-from protos_pb2 import User, GetUserRequest, NewMessageEvent, Message, Channel, Chat, Photo
+from protos_pb2 import User, GetUserRequest, NewMessageEvent, Message, Channel, Chat, Photo, ForwardResponse, \
+    ForwardRequest
 
 api_id = int(os.environ['API_ID'])
 api_hash = os.environ['API_HASH']
@@ -92,6 +93,24 @@ class TelegramServer(protos_pb2_grpc.TelegramClientServicer):
                 yield messages.pop()
         except:
             traceback.print_exc()
+
+    async def Forward(self, request:ForwardRequest, context) -> ForwardResponse:
+        from_peer = None
+        if request.HasField('from_user_id'):
+            from_peer=PeerUser(user_id=request.from_user_id)
+        elif request.HasField('from_chat_id'):
+            from_peer=PeerChat(chat_id=request.from_chat_id)
+        elif request.HasField('from_channel_id'):
+            from_peer=PeerChannel(channel_id=request.from_channel_id)
+
+        to_peer = None
+        if request.HasField('to_user_id'):
+            to_peer=PeerUser(user_id=request.to_user_id)
+        elif request.HasField('to_chat_id'):
+            to_peer=PeerChat(chat_id=request.to_chat_id)
+
+        await client.forward_messages(entity=to_peer, messages=request.message_id, from_peer=from_peer)
+        return ForwardResponse()
 
 
 async def serve() -> None:
