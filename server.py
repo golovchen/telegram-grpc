@@ -20,6 +20,7 @@ messages = []
 @client.on(events.NewMessage())
 async def handle_new_message(event):
     if isinstance(event.message, types.Message):
+        print("got " + str(event.message))
         sender = await event.message.get_sender()
         chat = await event.message.get_chat()
         message = event.message
@@ -37,7 +38,7 @@ async def handle_new_message(event):
 
         message_event = NewMessageEvent(message=proto_message)
         messages.append(message_event)
-        print(message_event)
+        print("add " + str(message_event))
 
 
 def telethon_photo_to_proto(photo):
@@ -90,11 +91,12 @@ class TelegramServer(protos_pb2_grpc.TelegramClientServicer):
                 while not messages:
                     await asyncio.sleep(0.1)
 
-                yield messages.pop()
+                yield messages.pop(0)
         except:
             traceback.print_exc()
 
     async def Forward(self, request:ForwardRequest, context) -> ForwardResponse:
+        print("forward " + str(request))
         from_peer = None
         if request.HasField('from_user_id'):
             from_peer=PeerUser(user_id=request.from_user_id)
