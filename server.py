@@ -3,12 +3,15 @@ import os
 import traceback
 
 import grpc
+import telethon
 from telethon import TelegramClient, functions, events, types
 from telethon.tl.types import PeerUser, PeerChat, PeerChannel
 
 import protos_pb2_grpc
 from protos_pb2 import User, GetUserRequest, NewMessageEvent, Message, Channel, Chat, Photo, ForwardResponse, \
-    ForwardRequest
+    ForwardRequest, SendMessageRequest, SendMessageResponse, SearchRequest, SearchResponse, FoundedChat, \
+    GetHistoryResponse, GetHistoryRequest, GetMessagesRequest, GetMessagesResponse, CreateChatResponse, \
+    CreateChatRequest, FullUser, Forward
 
 api_id = int(os.environ['API_ID'])
 api_hash = os.environ['API_HASH']
@@ -31,7 +34,7 @@ async def handle_new_message(event):
             photo=telethon_photo_to_proto(message.photo),
             sender_user = telethon_user_to_proto(sender),
             sender_channel=telethon_channel_to_proto(sender),
-            chat_user=telethon_user_to_proto(sender),
+            chat_user=telethon_user_to_proto(chat),
             chat_channel=telethon_channel_to_proto(chat),
             chat_chat=telethon_chat_to_proto(chat)
         )
@@ -54,6 +57,13 @@ def telethon_chat_to_proto(chat):
     else:
         return None
 
+def telethon_forward_to_proto(forward: telethon.tl.custom.forward.Forward):
+    if isinstance(forward, telethon.tl.custom.forward.Forward):
+        return Forward(chat_id=forward.chat_id)
+    else:
+        return None
+
+
 
 def telethon_channel_to_proto(sender):
     if isinstance(sender, types.Channel):
@@ -72,15 +82,18 @@ def telethon_user_to_proto(telethon_user):
 
 
 class TelegramServer(protos_pb2_grpc.TelegramClientServicer):
-    async def GetUser(self, request: GetUserRequest, context: grpc.aio.ServicerContext) -> User:
+    async def GetUser(self, request: GetUserRequest, context: grpc.aio.ServicerContext) -> FullUser:
         try:
             print("get user " + str(request))
-            result = await client(functions.users.GetFullUserRequest(
-                id=request.user_id
-            ))
+            if request.HasField('username'):
+                result = await client(functions.users.GetFullUserRequest(request.username))
+            elif request.HasField('user_id'):
+                result = await client(functions.users.GetFullUserRequest(
+                    id=request.user_id
+                ))
             print(result)
             result = result.users[0]
-            return User(first_name=result.first_name, last_name=result.last_name, username=result.username)
+            return FullUser(id=result.id, first_name=result.first_name, last_name=result.last_name, username=result.username)
         except:
             traceback.print_exc()
 
@@ -110,10 +123,95 @@ class TelegramServer(protos_pb2_grpc.TelegramClientServicer):
             to_peer=PeerUser(user_id=request.to_user_id)
         elif request.HasField('to_chat_id'):
             to_peer=PeerChat(chat_id=request.to_chat_id)
+        elif request.HasField('to_channel_id'):
+            to_peer=PeerChannel(channel_id=request.to_channel_id)
 
         await client.forward_messages(entity=to_peer, messages=request.message_id, from_peer=from_peer)
         return ForwardResponse()
 
+    async def SendMessage(self, request: SendMessageRequest, context) -> SendMessageResponse:
+        entity = None
+        if request.HasField('to_username'):
+            entity = request.to_username
+        elif request.HasField('to_user_id'):
+            entity=PeerUser(user_id=request.to_user_id)
+        elif request.HasField('to_chat_id'):
+            entity=PeerChat(chat_id=request.to_chat_id)
+
+        await client.send_message(entity, request.text)
+        return SendMessageResponse()
+
+    async def Search(self, request: SearchRequest, context) -> SearchResponse:
+        if request.HasField('limit'):
+            limit = request.limit
+        else:
+            limit = 100
+        result = await client(functions.contacts.SearchRequest(
+            q=request.query,
+            limit=limit
+        ))
+        if result.chats:
+            chats = [FoundedChat(id=c.id, title=c.title, participants_count=c.participants_count) for c in result.chats]
+        else:
+            chats = []
+        return SearchResponse(chats=chats)
+
+    async def CreateChat(self, request: CreateChatRequest, context) -> CreateChatResponse:
+        result = await client(functions.messages.CreateChatRequest(
+            users=list(request.user_ids),
+            title=request.title
+        ))
+        return CreateChatResponse(chat=telethon_chat_to_proto(result.chats[0]))
+
+    async def GetHistory(self, request: GetHistoryRequest, context) -> GetHistoryResponse:
+        result = await client(telethon.tl.functions.messages.GetHistoryRequest(
+            peer=request.username,
+            offset_id=request.offset_id,
+            offset_date=request.offset_date,
+            add_offset=request.add_offset,
+            limit=request.limit,
+            max_id=request.max_id,
+            min_id=request.min_id,
+            hash=request.hash
+        ))
+
+        return GetHistoryResponse(messages=[Message(
+            id=m.id,
+            text=m.text,
+            raw_text=m.raw_text,
+            photo=telethon_photo_to_proto(m.photo),
+            sender_user = telethon_user_to_proto(m.sender),
+            sender_channel=telethon_channel_to_proto(m.sender),
+            chat_user=telethon_user_to_proto(m.chat),
+            chat_channel=telethon_channel_to_proto(m.chat),
+            chat_chat=telethon_chat_to_proto(m.chat)
+        ) for m in result.messages])
+
+    async def GetMessages(self, request: GetMessagesRequest, context) -> GetMessagesResponse:
+        entity = None
+        if request.HasField('username'):
+            entity = request.username
+        elif request.HasField('user_id'):
+            entity = PeerUser(user_id=request.user_id)
+
+        result = await client.get_messages(
+            entity=entity,
+            offset_id=request.offset_id,
+            add_offset=request.add_offset,
+            limit=request.limit if request.limit > 0 else None
+        )
+        return GetMessagesResponse(messages=[Message(
+            id=m.id,
+            text=m.text,
+            raw_text=m.raw_text,
+            photo=telethon_photo_to_proto(m.photo),
+            sender_user = telethon_user_to_proto(m.sender),
+            sender_channel=telethon_channel_to_proto(m.sender),
+            chat_user=telethon_user_to_proto(m.chat),
+            chat_channel=telethon_channel_to_proto(m.chat),
+            chat_chat=telethon_chat_to_proto(m.chat),
+            forward=telethon_forward_to_proto(m.forward)
+        ) for m in result])
 
 async def serve() -> None:
     try:
